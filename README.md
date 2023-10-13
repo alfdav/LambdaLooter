@@ -17,7 +17,7 @@ cat ~/.aws/config | grep "\[profile" | cut -d " " -f 2 | cut -d "]" -f 1 >> AWSP
 save the output of the above command to a text file
 
 ```
-usage: LamdaLooter [-h] [--version] (-p PROFILE | -f PROFILELIST) [-r REGION] [-t THREADS] [-fv] [-d]
+usage: claws [-h] [--version] (-p PROFILE) [-r REGION] [-t THREADS] [-fv] [-d] [-ro ROLE] [-hu] [-l] [-e]
 
 Download your Lambda code and scan for secrets.
 
@@ -26,14 +26,16 @@ options:
   --version             show program's version number and exit
   -p PROFILE, --profile PROFILE
                         Single AWS profile you want scan for lambda code
-  -f PROFILELIST, --file PROFILELIST
-                        File containing the AWS profiles you want scan for lambda code
   -r REGION, --region REGION
                         Your aws region you want to download lambda code from. Default=us-east-1.
   -t THREADS, --threads THREADS
                         Number of threads to download functions and scan for loot. Default=10.
   -fv, --versions       Download all versions of the Lambda code. Default=False.
   -d, --delete          Delete the Zip files after you are done looting. Default=False.
+  -ro, --role           Role that you will use if trying to assume role chain.
+  -hu, --hunt           Hunt through all code in /loot.
+  -l, --lambda          Download Lambda code.
+  -e, --ec2             Download EC2 UserData code. (https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html)
 
 Download ---> Pillage ---> Loot ---> Prosper!
 ```
