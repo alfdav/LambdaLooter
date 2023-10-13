@@ -1,11 +1,11 @@
-# LambdaLooter
+# CLAWS - Credential Looter AWS
 
 ## Overview
-Organizations can have thousands of lines of code that are stored in Lambda on AWS.  This application was built to help reduce the amount of time it takes to review that code.  On our last Pen Test we had so much Lambda code to review it was impossible to parse through all of it in the short amount of time assingned to our test.  This lack of time created a necessity to automate the review of that Lambda code for secrets.  LambdaLooter was born out of that automation.  LambdaLooter will take a list of profiles and scan through them and download the code you have access to and then process that code for secrets outputting any potential secrets to a loot directory.  Even though there can be a lot of false positives it makes looking for loot much faster than scanning the code itself.
+Organizations can have thousands of lines of code that are stored in AWS across multiple services. This application was built to help reduce the amount of time it takes to review that code. What started as a necessity for pentesters to dig through lambda functions has morphed into a tool for both red and blue teamers to dig for creds throughout AWS services. Currently only supporting EC2 and Lambda, but with plans to expand to other services. 
 
-LamdaLooter is a Python tool for AWS Lambda code analysis.
+LamdaLooter is a Python tool for AWS code analysis.
 
-This script will analyze all of the Lambda code that you have access to.
+This script will analyze all AWS code that you have access to.
 
 ## configure AWS to get a list of your profiles
 ```
@@ -36,7 +36,7 @@ options:
 Download ---> Pillage ---> Loot ---> Prosper!
 ```
 ### Signatures
-LambdaLooter relies on python files with signatures to determine what may be interesting
+LambdaLooter relies on JSON files with signatures to determine what may be interesting. These signatures can be edited and changed depending on your own environment. 
 * sig_all_tokens.json
     * contains signatures for all types of keys and tokens used on the web
 * sig_basic_strings.json
