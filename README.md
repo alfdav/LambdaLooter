@@ -3,7 +3,9 @@
 ## Overview
 Organizations can have thousands of lines of code that are stored in AWS across multiple services. This application was built to help reduce the amount of time it takes to review that code. What started as a necessity for pentesters to dig through lambda functions has morphed into a tool for both red and blue teamers to dig for creds throughout AWS services. Currently only supporting EC2 and Lambda, but with plans to expand to other services. 
 
+
 LamdaLooter is a Python tool for AWS code analysis.
+
 
 This script will analyze all AWS code that you have access to.
 
