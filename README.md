@@ -40,7 +40,7 @@ options:
 Download ---> Pillage ---> Loot ---> Prosper!
 ```
 ### Signatures
-LambdaLooter relies on JSON files with signatures to determine what may be interesting. These signatures can be edited and changed depending on your own environment. 
+CLAWS relies on JSON files with signatures to determine what may be interesting. These signatures can be edited and changed depending on your own environment. 
 * sig_all_tokens.json
     * contains signatures for all types of keys and tokens used on the web
 * sig_basic_strings.json
