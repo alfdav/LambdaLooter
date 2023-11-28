@@ -61,4 +61,4 @@ def zipEC2File(profile, deldownloads):
         for file_path in zipDirectory.iterdir():
             archive.write(file_path, arcname=file_path.name)
             if deldownloads:
-                os.remove(file_path
+                os.remove(file_path)
