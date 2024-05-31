@@ -1,4 +1,5 @@
 import os
+import json
 import argparse
 import subprocess
 from subprocess import call
@@ -6,18 +7,27 @@ from concurrent.futures import ThreadPoolExecutor, wait
 import boto3
 from boto3 import Session
 from time import gmtime, strftime
-import time
-
+from datetime import datetime, timedelta
+from dateutil import tz
 import ec2looter
 import parsing
 import lambdalooter
 import auth
+import ssmlooter
+
+runtime = datetime.utcnow()
+# Get our default session as assume role chaining needs our current EC2 session details to be able to chain more than one session.
+default_sts_client = auth.getDefault()
+
+
 
 PROG_NAME = "CLAWS - Credential Looter AWS"
-PROG_VER = 0.01
+PROG_VER = 1.1
 PROG_DESC = "Download AWS code and scan for secrets."
-PROG_EPILOG = "A.K.A Gimme Da Loot"
+PROG_EPILOG = ""
 PROG_ORIGINS = "LambdaLooter at https://github.com/StateFarmIns/LambdaLooter"
+
+
 
 def parse_args():
     """
@@ -36,13 +46,13 @@ def parse_args():
     #Following variable set to lambduh because 'lambda' appears to be an object or something within python and I can't use it. Sadge.
     parser.add_argument("-l", "--lambda", dest="lambduh", action='store_true', help="Download Lambda code. Default=False.")
     parser.add_argument("-e", "--ec2", dest="ec2", action='store_true', help="Download EC2 users data. Default=False.")
-    
+    parser.add_argument("-s", "--ssm", dest="ssm", action='store_true', help="Download ssm preferences. Default=False.")
     args = parser.parse_args()
     
     return args
 
 
-def main(region, threads, deldownloads, getversions, hunt, ec2, lambduh, role, profile=None):       
+def main(region, threads, deldownloads, getversions, hunt, ec2, lambduh, ssm, role, profile=None):       
     """
     Main function
     Sets the stage for everything!
@@ -53,55 +63,130 @@ def main(region, threads, deldownloads, getversions, hunt, ec2, lambduh, role, p
     getversions: YES or NO
     profile: the AWS profile lambdas are downloaded from 
     """
-    # Check/Creation of loot folder
-    #_____________________________________________________________________________
-    strLoot = os.path.isdir('./loot')
-    if not strLoot:
-        os.mkdir('loot')
-        print("Created the folder:", 'loot')
-    else:
-        print('loot', "folder already exists.")
-    #
-    # If user does not supply a profile, we will grab profiles using boto3.session.Session().available_profiles which returns a list of our profiles we can attempt to auth to using our current creds.
-    #______________________________________________________________________________
-    if ec2 or lambduh:
+    
+    # Make sure base folders and any files you need on first run are existing.
+    # Great place to check your files and see if you need to pull anything down from S3 or anywhere else you are storing your files. 
+    setup()
+    
+    # Call to get our account list if not account is specified. 
+    if profile is None:
+        accounts = getAccounts()
+
+
+    if ec2 or lambduh or ssm:
         if profile is None:
             if threads == 1:
-                for profileCurrent in boto3.session.Session().available_profiles:
-                    awsProfileSetup(profileCurrent, region, threads, deldownloads, getversions, ec2, lambduh)
+                for profileCurrent in accounts:
+                    awsProfileSetup(profileCurrent, region, threads, deldownloads, getversions, ec2, lambduh, ssm, role)
             else:    
                 with ThreadPoolExecutor(threads) as executor:
-                    #futures = [executor.submit(awsProfileSetup, profileCurrent, region, threads, deldownloads, getversions) for profileCurrent in profilelist]
-                    futures = [executor.submit(awsProfileSetup, profileCurrent, region, threads, deldownloads, getversions, ec2, lambduh) for profileCurrent in boto3.session.Session().available_profiles]
+                    futures = [executor.submit(awsProfileSetup, profileCurrent, region, threads, deldownloads, getversions, ec2, lambduh, ssm, role) for profileCurrent in accounts]
                     #wait for all tasks to complete
                     wait(futures)
-        #   
-        # If a profile was given, this will run. 
-        #_______________________________________________________________________________    
+    
         if profile is not None:
-            awsProfileSetup(profile, region, threads, deldownloads, getversions, ec2, lambduh)
-    #
-    # if hunt flag was included, this will run. 
-    #_______________________________________________________________________________  
-    #print(threads)
+            awsProfileSetup(profile, region, threads, deldownloads, getversions, ec2, lambduh, ssm, role)
+    
+
+
     if hunt:
         if profile is None:
-            if threads == 1:
-                for profileCurrent in boto3.session.Session().available_profiles:
-                    parsing.hunt(threads, deldownloads, getversions, profileCurrent)
-            else:    
-                with ThreadPoolExecutor(threads) as executor:
-                    #futures = [executor.submit(awsProfileSetup, profileCurrent, region, threads, deldownloads, getversions) for profileCurrent in profilelist]
-                    futures = [executor.submit(parsing.hunt, threads, deldownloads, getversions, profileCurrent) for profileCurrent in boto3.session.Session().available_profiles]
-                    #wait for all tasks to complete
-                    wait(futures)
+            for profileCurrent in accounts:
+                parsing.hunt(threads, deldownloads, getversions, profileCurrent)
         if profile is not None:
             parsing.hunt(threads, deldownloads, getversions, profile)
-            
     print("Thanks for looting with us!")
     
 
-def awsProfileSetup(profile, region, threads, deldownloads, getversions, ec2, lambduh):
+
+# setup our folders
+def setup():
+    strLoot = os.path.isdir('./loot')
+    if not strLoot:
+        print("Making folder loot")
+        os.mkdir('loot')
+    strTrack = os.path.isdir('./track')
+    if not strTrack:
+        print("Making folder track")
+        os.mkdir('track')
+    strSub = os.path.isdir('./findings')
+    if not strSub:
+        print("Making folder findings")
+        os.mkdir('findings')
+    strLogs = os.path.isdir('./logs')
+    if not strLogs:
+        print("Making folder logs")
+        os.mkdir('logs')
+    
+def lootDirCheck(profile, ec2, lambduh, ssm):
+    # Make sure files exist if we are going to be downloading that type. 
+    
+    base = os.path.isdir("./loot/" + profile)
+    if not base:
+        os.mkdir("./loot/" + profile)
+    if ec2:
+        strLoot = os.path.isdir("./loot/" + profile + "/ec2")
+        if not strLoot:
+            os.mkdir("./loot/" + profile + "/ec2")
+    if ssm:
+        strLoot = os.path.isdir("./loot/" + profile + "/ssm")
+        if not strLoot:
+            os.mkdir("./loot/" + profile + "/ssm")
+    if lambduh:
+        strLoot = os.path.isdir("./loot/" + profile + "/lambda")
+        if not strLoot:
+            os.mkdir("./loot/" + profile + "/lambda")
+        strLoot = os.path.isdir("./loot/" + profile + "/env")
+        if not strLoot:
+            os.mkdir("./loot/" + profile + "/env")
+
+
+# Put in here how to ingest whatever or wherever your list is.
+def getAccounts():
+    accounts = []
+    for account in open('./accounts.txt').readlines():
+        accounts.append(account.strip('\n'))
+    return accounts
+
+
+# Track check is used to see if your tracker file exists for a specific account. If it does it will return it as a variable, if not, it will create a default tracker entry and return that. 
+def trackCheck(profileID):
+    print('trackCheck()')
+    trackFile = os.path.exists(f'./track/{profileID}.json')
+    if trackFile:
+        try:
+            jsonTrack = json.load(open(f'./track/{profileID}.json'))
+            return jsonTrack
+        except Exception as e:
+            print("Something went wrong and we can't load the track file. (./track.json)" + str(e))
+    else:
+        print("tracker file does not exist/cannot be found. Using default timeframes.")
+        defaultTracker = {"LambdaLastChecked" : '1999-12-04 18:40:54.529028+00:00',
+                          'ec2LastChecked' : '1999-12-04 18:40:54.529028+00:00',
+                          'ssmLastChecked': '1999-12-04 18:40:54.529028+00:00'}
+        with open(f'./track/{profileID}.json', "w") as code:
+            code.write(json.dumps(defaultTracker))
+        return defaultTracker
+
+# Update the time in which a profile has last downloaded lambda or EC2 data. 
+def trackUpdate(jsonTrack, ec2, lambduh, ssm, profileID):
+    print("trackUpdate()")
+    #print(jsonTrack)
+    if ec2:
+        jsonTrack.update({'ec2LastChecked' : str(runtime)  + "+00:00"
+            })
+    if lambduh:
+        jsonTrack.update({'LambdaLastChecked' : str(runtime) + "+00:00"
+            })
+    if ssm:
+        jsonTrack.update({'ssmLastChecked' : str(runtime) + "+00:00"
+            })
+    with open(f'./track/{profileID}.json', "w") as code:
+        code.write(json.dumps(jsonTrack))
+
+
+
+def awsProfileSetup(profileID, region, threads, deldownloads, getversions, ec2, lambduh, ssm, role):
     """
     AWS functions to interact with AWS profiles.
     Either from a file list or single specified profile
@@ -115,55 +200,36 @@ def awsProfileSetup(profile, region, threads, deldownloads, getversions, ec2, la
     lambduh: YES or NO
     hunt YES or NO
     """
+   
+    print(f'awsProfileSetup({profileID}, {ec2}, {lambduh}, {ssm})')
+    # Got our profiles tracker data. 
+    jsonTracker = trackCheck(profileID)
+    lootDirCheck(profileID, ec2, lambduh, ssm)
     
     #
-    # Check to see if you have current valid creds, or if you need to get/refresh them. 
+    # Assume role to profiles in list.  
     #______________________________________________________________________________
-
-    failed = False
-    boto3.setup_default_session(profile_name=profile)
-    try: 
-        sts_client = boto3.client('sts')
-        sts_client.get_caller_identity()
-    except:
-        print("Not Authed")
-        authID.example(profileID, region)
-        try:
-            sts_client = boto3.client('sts')
-            sts_client.get_caller_identity()
-        except:
-            failed = True
+    clients = auth.authID(profileID, region, role, default_sts_client)
     #
     # Creating the file for our profile findings and files. 
     #______________________________________________________________________________
-    if not failed:
-        os.environ["AWS_PROFILE"] = profile
-        print("Creating directory to store functions")
-        strExists = os.path.isdir('./loot/' + profile)
-        if not strExists:
-            os.mkdir('./loot/' + profile)
-            print("Created the folder:", profile)
-        else:
-            print(profile, "folder already exists....moving on.")
-        
-        #
-        # Initial flow of downloading. One at a time in order
-        #______________________________________________________________________________
-        #
-        # If ec2 flag was given, then we will create an ec2_client object and call ec2looter
-        if ec2:
-            boto3.setup_default_session(profile_name=profile)
-            ec2_client = boto3.client('ec2', region_name=region)
-            ec2looter.loot(profile, ec2_client, deldownloads)
-        #
-        # If lambda flag was given, then we will create an lambda_client object and call lambdalooter 
-        if lambduh:
-            boto3.setup_default_session(profile_name=profile)
-            lambda_client = boto3.client('lambda', region_name=region)
-            lambdalooter.loot(profile, lambda_client, threads, getversions, deldownloads)
+    strExists = os.path.isdir('./loot/' + profileID)
+    if not strExists:
+        os.mkdir('./loot/' + profileID)
+        print("Created the folder:", profileID)
     
+    if ec2:
+        ec2looter.loot(profileID, clients['ec2client'], deldownloads, jsonTracker)
+    if lambduh:
+        lambdalooter.loot(profileID, clients['lambdaclient'], threads, getversions, deldownloads, jsonTracker)
+    if ssm:
+        ssmlooter.loot(profileID, clients['ssmclient'], deldownloads, jsonTracker)
+    # Update our tracker for the profile
+    trackUpdate(jsonTracker, ec2, lambduh, ssm, profileID)
+    print('')
+    print('')
 
 if __name__ == "__main__":
     args = parse_args()
     
-    main(args.region, args.threads, args.deldownloads, args.versions, args.hunt, args.ec2, args.lambduh, args.role, profile=args.profile)
+    main(args.region, args.threads, args.deldownloads, args.versions, args.hunt, args.ec2, args.lambduh, args.ssm, args.role, profile=args.profile)

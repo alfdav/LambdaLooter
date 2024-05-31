@@ -2,7 +2,15 @@
 	{ 
 		"title":"TOKEN Signatures",
 		"sigs":[
-		{
+	                {
+                                "part": "content",
+                                "type": "regex",
+                                "pattern": "(?i)(?:[\\s|']|[\\s|\"]){0,3}(?:=|>|:{1,3}=|\\|\\|:|<=|=>|:|\\?=){0,3}(?:'|\"|\\s|=|\\x60){0,3}(00[a-z0-9=_-]{40})(?:['|\"|\\n|\\r|\\s|\\x60|;]|$)",
+                                "caption": "okta api token - 42 characters in length",
+                                "description": "okta api token - 42 characters in length",
+                                "exclusions": []
+                        },
+			{
 				"part": "content",
 				"type": "regex",
 				"pattern": "-----BEGIN (RSA )?(PUBLIC|PRIVATE)? KEY-----[a-zA-Z0-9+\\\\\/=\r\n\" ]{300,4500}-----END (RSA )?(PUBLIC|PRIVATE)? KEY-----",
