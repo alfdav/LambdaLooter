@@ -12,7 +12,3 @@ FILE_TYPES = [
     '.txt',
     '.sql'
 ]
-
-G_FILTERS = [
-    '\x00'
-]

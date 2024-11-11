@@ -1,2 +1,12 @@
 __pycache__
 loot
+loot*
+investigate
+logs
+track
+gateway
+findings
+accounts.txt
+accounts.json
+testaccounts.txt
+*.log
